@@ -1,1 +1,1 @@
-# devsecops-gitlab-ci
+# DevSecOps - GitLab CI

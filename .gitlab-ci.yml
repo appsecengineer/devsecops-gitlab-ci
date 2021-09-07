@@ -1,0 +1,148 @@
+stages:
+  # - sast
+  # - sca
+  # - secrets
+  - build
+  # - container
+  - dast
+
+# sast_scan:
+#   image: docker:stable
+#   stage: sast
+#   allow_failure: true
+#   variables:
+#     DOCKER_DRIVER: overlay2
+#   services:
+#     - docker:stable-dind
+#   script:
+#     - apk add py-pip
+#     - pip install bandit
+#     - bandit -r -f json -o bandit_result.json app/
+#   artifacts:
+#     paths: [bandit_result.json]
+#     expire_in: 1 week
+
+# semgrep:
+#   image: returntocorp/semgrep-agent:v1
+#   stage: sast
+#   script: semgrep-agent
+#   allow_failure: true
+#   variables:
+#     SEMGREP_RULES: >-
+#       p/security-audit
+#       p/secrets
+#       p/ci
+#       p/python
+
+# pyraider_dependency_scanning:
+#   image: python:3.7-alpine
+#   stage: sca
+#   script:
+#     - pip install pyraider
+#     - pyraider check -f app/requirements.txt -e json pyraider.json
+#   artifacts:
+#     paths: [pyraider.json]
+#     expire_in: 1 week
+
+# gitleaks:
+#   image: docker:stable
+#   stage: secrets
+#   allow_failure: true
+#   variables:
+#     DOCKER_DRIVER: overlay2
+#   services:
+#     - docker:dind
+#   script:
+#     - docker run --rm --name=gitleaks -v $PWD/:/code zricethezav/gitleaks -v --path=/code --report=/code/gitleaks.json
+#   artifacts:
+#     paths: [gitleaks.json]
+#     expire_in: 1 week
+
+build:
+  image: docker:latest
+  stage: build
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  script:
+    - echo "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    - docker build --pull -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" .
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+
+# dockerfile_scan:
+#   image: docker:stable
+#   stage: container
+#   variables:
+#     DOCKER_DRIVER: overlay2
+#   allow_failure: true
+#   services:
+#     - docker:dind
+#   before_script:
+#     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+#   script:
+#     - docker run hadolint/hadolint < Dockerfile >> hadolint-results.txt
+#   artifacts:
+#     paths: [hadolint-results.txt]
+#     expire_in: 1 week
+
+# trivy_scan:
+#   image:
+#     name: docker:stable
+#   stage: container
+#   services:
+#     - docker:dind
+#   variables:
+#     TRIVY_AUTH_URL: $CI_REGISTRY
+#     TRIVY_USERNAME: $CI_REGISTRY_USER
+#     TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
+#   before_script:
+#     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+#     - docker pull ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
+#     - apk add -U wget ca-certificates tar curl git
+#     - export VERSION=$(curl --silent "https://api.github.com/repos/aquasecurity/trivy/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+#     - wget https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz
+#     - tar zxvf trivy_${VERSION}_Linux-64bit.tar.gz
+#   script:
+#     - ./trivy -f json -o trivy_result.json --exit-code 0 --auto-refresh ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
+#   artifacts:
+#     paths:
+#       - trivy_result.json
+#     expire_in: 1 week
+
+owasp_zap:
+  image: 
+    name: docker:stable
+  stage: dast
+  variables:
+    DOCKER_DRIVER: overlay2
+  services:
+    - docker:dind
+  before_script:
+    - apk add curl
+    - apk add python3 py3-pip openjdk8 bash
+    - pip3 install requests python-owasp-zap-v2.4
+    - pwd
+    - mkdir -p ./zap && cd ./zap
+    - wget https://github.com/zaproxy/zaproxy/releases/download/v2.9.0/ZAP_2.9.0_Linux.tar.gz
+    - tar -zxvf ZAP_2.9.0_Linux.tar.gz && rm ZAP_2.9.0_Linux.tar.gz
+    - cd ZAP_2.9.0/plugin && wget https://github.com/zaproxy/zap-extensions/releases/download/exportreport-v6/exportreport-alpha-6.zap && cd $CI_PROJECT_DIR
+    - echo 'export PATH_ZAP_SH=./zap/ZAP_2.9.0/zap.sh' >> ~/.bashrc
+    - echo 'export ZAP_PORT=8090' >> ~/.bashrc
+    - echo "Running Target Application"
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    - docker pull ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
+    - docker run -d -p 5050:5050 --name vul_flask --restart on-failure ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
+    - sleep 10
+    - docker ps
+    - curl -XGET -i http://docker:5050 || true
+    - ./zap/ZAP_2.9.0/zap.sh -daemon -host 0.0.0.0 -port 8090 -config api.addrs.addr.name=".*" -config api.addrs.addr.regex=true -config api.disablekey=true > /dev/null &
+    - sleep 20
+  script:
+    - cd ./tests/
+    - python3 e2e_zap.py
+  artifacts:
+      paths:
+        - ./tests/zap-report.json
+      expire_in: 1 week
+
