@@ -1,62 +1,62 @@
 stages:
-  # - sast
-  # - sca
-  # - secrets
+  - sast
+  - sca
+  - secrets
   - build
-  # - container
+  - container
   - dast
 
-# sast_scan:
-#   image: docker:stable
-#   stage: sast
-#   allow_failure: true
-#   variables:
-#     DOCKER_DRIVER: overlay2
-#   services:
-#     - docker:stable-dind
-#   script:
-#     - apk add py-pip
-#     - pip install bandit
-#     - bandit -r -f json -o bandit_result.json app/
-#   artifacts:
-#     paths: [bandit_result.json]
-#     expire_in: 1 week
+sast_scan:
+  image: docker:stable
+  stage: sast
+  allow_failure: true
+  variables:
+    DOCKER_DRIVER: overlay2
+  services:
+    - docker:stable-dind
+  script:
+    - apk add py-pip
+    - pip install bandit
+    - bandit -r -f json -o bandit_result.json app/
+  artifacts:
+    paths: [bandit_result.json]
+    expire_in: 1 week
 
-# semgrep:
-#   image: returntocorp/semgrep-agent:v1
-#   stage: sast
-#   script: semgrep-agent
-#   allow_failure: true
-#   variables:
-#     SEMGREP_RULES: >-
-#       p/security-audit
-#       p/secrets
-#       p/ci
-#       p/python
+semgrep:
+  image: returntocorp/semgrep-agent:v1
+  stage: sast
+  script: semgrep-agent
+  allow_failure: true
+  variables:
+    SEMGREP_RULES: >-
+      p/security-audit
+      p/secrets
+      p/ci
+      p/python
 
-# pyraider_dependency_scanning:
-#   image: python:3.7-alpine
-#   stage: sca
-#   script:
-#     - pip install pyraider
-#     - pyraider check -f app/requirements.txt -e json pyraider.json
-#   artifacts:
-#     paths: [pyraider.json]
-#     expire_in: 1 week
+pyraider_dependency_scanning:
+  image: python:3.7-alpine
+  stage: sca
+  script:
+    - pip install pyraider
+    - pyraider check -f app/requirements.txt -e json pyraider.json
+  artifacts:
+    paths: [pyraider.json]
+    expire_in: 1 week
 
-# gitleaks:
-#   image: docker:stable
-#   stage: secrets
-#   allow_failure: true
-#   variables:
-#     DOCKER_DRIVER: overlay2
-#   services:
-#     - docker:dind
-#   script:
-#     - docker run --rm --name=gitleaks -v $PWD/:/code zricethezav/gitleaks -v --path=/code --report=/code/gitleaks.json
-#   artifacts:
-#     paths: [gitleaks.json]
-#     expire_in: 1 week
+gitleaks:
+  image: docker:stable
+  stage: secrets
+  allow_failure: true
+  variables:
+    DOCKER_DRIVER: overlay2
+  services:
+    - docker:dind
+  script:
+    - docker run --rm --name=gitleaks -v $PWD/:/code zricethezav/gitleaks -v --path=/code --report=/code/gitleaks.json
+  artifacts:
+    paths: [gitleaks.json]
+    expire_in: 1 week
 
 build:
   image: docker:latest
@@ -70,45 +70,45 @@ build:
     - docker build --pull -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" .
     - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
 
-# dockerfile_scan:
-#   image: docker:stable
-#   stage: container
-#   variables:
-#     DOCKER_DRIVER: overlay2
-#   allow_failure: true
-#   services:
-#     - docker:dind
-#   before_script:
-#     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
-#   script:
-#     - docker run hadolint/hadolint < Dockerfile >> hadolint-results.txt
-#   artifacts:
-#     paths: [hadolint-results.txt]
-#     expire_in: 1 week
+dockerfile_scan:
+  image: docker:stable
+  stage: container
+  variables:
+    DOCKER_DRIVER: overlay2
+  allow_failure: true
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  script:
+    - docker run hadolint/hadolint < Dockerfile >> hadolint-results.txt
+  artifacts:
+    paths: [hadolint-results.txt]
+    expire_in: 1 week
 
-# trivy_scan:
-#   image:
-#     name: docker:stable
-#   stage: container
-#   services:
-#     - docker:dind
-#   variables:
-#     TRIVY_AUTH_URL: $CI_REGISTRY
-#     TRIVY_USERNAME: $CI_REGISTRY_USER
-#     TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
-#   before_script:
-#     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
-#     - docker pull ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
-#     - apk add -U wget ca-certificates tar curl git
-#     - export VERSION=$(curl --silent "https://api.github.com/repos/aquasecurity/trivy/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
-#     - wget https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz
-#     - tar zxvf trivy_${VERSION}_Linux-64bit.tar.gz
-#   script:
-#     - ./trivy -f json -o trivy_result.json --exit-code 0 --auto-refresh ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
-#   artifacts:
-#     paths:
-#       - trivy_result.json
-#     expire_in: 1 week
+trivy_scan:
+  image:
+    name: docker:stable
+  stage: container
+  services:
+    - docker:dind
+  variables:
+    TRIVY_AUTH_URL: $CI_REGISTRY
+    TRIVY_USERNAME: $CI_REGISTRY_USER
+    TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    - docker pull ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
+    - apk add -U wget ca-certificates tar curl git
+    - export VERSION=$(curl --silent "https://api.github.com/repos/aquasecurity/trivy/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+    - wget https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz
+    - tar zxvf trivy_${VERSION}_Linux-64bit.tar.gz
+  script:
+    - ./trivy -f json -o trivy_result.json --exit-code 0 --auto-refresh ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
+  artifacts:
+    paths:
+      - trivy_result.json
+    expire_in: 1 week
 
 owasp_zap:
   image: 
