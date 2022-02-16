@@ -17,7 +17,7 @@ sast_scan:
   script:
     - apk add py-pip
     - pip install bandit
-    - bandit -r -f json -o bandit_result.json app/
+    - bandit -r -f json -o bandit_result.json --exit-zero app/
   artifacts:
     paths: [bandit_result.json]
     expire_in: 1 week
@@ -53,7 +53,7 @@ gitleaks:
   services:
     - docker:dind
   script:
-    - docker run --rm --name=gitleaks -v $PWD/:/code zricethezav/gitleaks -v --path=/code --report=/code/gitleaks.json
+    - docker run --rm --name=gitleaks -v $PWD/:/code zricethezav/gitleaks  detect  --source /code --report-path /code/gitleaks.json || true
   artifacts:
     paths: [gitleaks.json]
     expire_in: 1 week
@@ -104,7 +104,7 @@ trivy_scan:
     - wget https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz
     - tar zxvf trivy_${VERSION}_Linux-64bit.tar.gz
   script:
-    - ./trivy -f json -o trivy_result.json --exit-code 0 --auto-refresh ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
+    - ./trivy image --exit-code 0 -o trivy_result.json -f json ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
   artifacts:
     paths:
       - trivy_result.json
@@ -145,4 +145,3 @@ owasp_zap:
       paths:
         - ./tests/zap-report.json
       expire_in: 1 week
-
