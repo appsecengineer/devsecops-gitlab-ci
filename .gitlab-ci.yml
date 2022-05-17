@@ -4,7 +4,7 @@ stages:
   - secrets
   - build
   - container
-  - dast
+  - custom_dast
 
 sast_scan:
   image: docker:stable
@@ -113,7 +113,7 @@ trivy_scan:
 owasp_zap:
   image: 
     name: docker:stable
-  stage: dast
+  stage: custom_dast
   variables:
     DOCKER_DRIVER: overlay2
   services:
