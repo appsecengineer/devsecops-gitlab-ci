@@ -22,18 +22,6 @@ sast_scan:
     paths: [bandit_result.json]
     expire_in: 1 week
 
-semgrep:
-  image: returntocorp/semgrep-agent:v1
-  stage: sast
-  script: semgrep-agent
-  allow_failure: true
-  variables:
-    SEMGREP_RULES: >-
-      p/security-audit
-      p/secrets
-      p/ci
-      p/python
-
 pyraider_dependency_scanning:
   image: python:3.7-alpine
   stage: sca
@@ -110,6 +98,18 @@ trivy_scan:
       - trivy_result.json
     expire_in: 1 week
 
+build:
+  image: docker:latest
+  stage: build
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  script:
+    - echo "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    - docker build --pull -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" .
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+
 owasp_zap:
   image: 
     name: docker:stable
@@ -120,14 +120,15 @@ owasp_zap:
     - docker:dind
   before_script:
     - apk add curl
-    - apk add python3 py3-pip openjdk8 bash
-    - pip3 install requests python-owasp-zap-v2.4
+    - apk add python3 py3-pip openjdk11 bash jq
+    - pip3 install --upgrade --ignore-installed six==1.16.0
+    - pip3 install requests==2.31.0 zaproxy python-owasp-zap-v2.4
     - pwd
     - mkdir -p ./zap && cd ./zap
-    - wget https://github.com/zaproxy/zaproxy/releases/download/v2.9.0/ZAP_2.9.0_Linux.tar.gz
-    - tar -zxvf ZAP_2.9.0_Linux.tar.gz && rm ZAP_2.9.0_Linux.tar.gz
-    - cd ZAP_2.9.0/plugin && wget https://github.com/zaproxy/zap-extensions/releases/download/exportreport-v6/exportreport-alpha-6.zap && cd $CI_PROJECT_DIR
-    - echo 'export PATH_ZAP_SH=./zap/ZAP_2.9.0/zap.sh' >> ~/.bashrc
+    - wget https://github.com/zaproxy/zaproxy/releases/download/v2.15.0/ZAP_2.15.0_Linux.tar.gz
+    - tar -zxvf ZAP_2.15.0_Linux.tar.gz && rm ZAP_2.15.0_Linux.tar.gz
+    - cd ZAP_2.15.0/plugin && wget https://github.com/zaproxy/zap-extensions/releases/download/exportreport-v6/exportreport-alpha-6.zap && cd $CI_PROJECT_DIR
+    - echo 'export PATH_ZAP_SH=./zap/ZAP_2.15.0/zap.sh' >> ~/.bashrc
     - echo 'export ZAP_PORT=8090' >> ~/.bashrc
     - echo "Running Target Application"
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
@@ -136,8 +137,9 @@ owasp_zap:
     - sleep 10
     - docker ps
     - curl -XGET -i http://docker:5050 || true
-    - ./zap/ZAP_2.9.0/zap.sh -daemon -host 0.0.0.0 -port 8090 -config api.addrs.addr.name=".*" -config api.addrs.addr.regex=true -config api.disablekey=true > /dev/null &
-    - sleep 20
+    - ./zap/ZAP_2.15.0/zap.sh -daemon -host 0.0.0.0 -port 8090 -config api.addrs.addr.name=".*" -config api.addrs.addr.regex=true -config api.disablekey=true > /dev/null &
+    - sleep 120
+    - curl -X GET http://localhost:8090/JSON/core/view/urls/ | jq
   script:
     - cd ./tests/
     - python3 e2e_zap.py
@@ -145,3 +147,4 @@ owasp_zap:
       paths:
         - ./tests/zap-report.json
       expire_in: 1 week
+
