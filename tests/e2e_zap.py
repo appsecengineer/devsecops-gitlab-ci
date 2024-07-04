@@ -71,14 +71,36 @@ while int(zap.ascan.status(active_scan_id)) < 100:
         zap.ascan.status(active_scan_id)))
     time.sleep(10)
 
-now = datetime.datetime.now().strftime("%m/%d/%Y")
-alert_severity = 't;t;t;t'  # High;Medium;Low;Info
-# CWEID;#WASCID;Description;Other Info;Solution;Reference;Request Header;Response Header;Request Body;Response Body
-alert_details = 't;t;t;t;t;t;f;f;f;f'
-source_info = 'Vulnerability Report for Flask_API;Abhay Bhargav;API Team;{};{};v1;v1;API Scan Report'.format(
-    now, now)
-path = getcwd() + "/zap-report.json"
-zap.exportreport.generate(path, "json", sourcedetails=source_info,
-                          alertseverity=alert_severity, alertdetails=alert_details, scanid=active_scan_id)
+# now = datetime.datetime.now().strftime("%m/%d/%Y")
+# alert_severity = 't;t;t;t'  # High;Medium;Low;Info
+# # CWEID;#WASCID;Description;Other Info;Solution;Reference;Request Header;Response Header;Request Body;Response Body
+# alert_details = 't;t;t;t;t;t;f;f;f;f'
+# source_info = 'Vulnerability Report for Flask_API;Abhay Bhargav;API Team;{};{};v1;v1;API Scan Report'.format(
+#     now, now)
+# path = getcwd() + "/zap-report.json"
+# zap.exportreport.generate(path, "json", sourcedetails=source_info,
+#                           alertseverity=alert_severity, alertdetails=alert_details, scanid=active_scan_id)
+
+import subprocess
+import json
+
+# Define the command to be executed
+command = ['curl', '-X', 'GET', 'http://localhost:8090/JSON/core/view/alerts']
+
+# Execute the command and capture the output
+result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+# Check if the command was successful
+if result.returncode == 0:
+    # Parse the output using jq (or json.loads in Python if the output is JSON)
+    output = json.loads(result.stdout)
+
+    # Save the output to a file
+    with open('zap-report.json', 'w') as file:
+        json.dump(output, file, indent=4)
+
+    print("Output saved to zap-report.json")
+else:
+    print(f"Error: {result.stderr}")
 
 zap.core.shutdown()
